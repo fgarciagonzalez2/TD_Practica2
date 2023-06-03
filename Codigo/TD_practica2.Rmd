@@ -1,0 +1,415 @@
+---
+title: "Master en Ciencias de Datos - Tipología y  ciclo de vida de los datos. Practica 2 - Limpieza y análisis de datos"
+author: "Andrea Marcos Vargas y Felipe E García González"
+date: '`r format(Sys.Date(),"%e de %B de %Y")`'
+lang: es
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 2
+linkcolor: blue
+header-includes:
+  \usepackage{pdflscape}
+  \newcommand{\blandscape}{\begin{landscape}}
+  \newcommand{\elandscape}{\end{landscape}}
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries, include=FALSE}
+library(stringr)
+library(VIM)
+library(dplyr)
+library(kableExtra)
+library(pander)
+library(modeest)
+library(tibble)
+library(ggplot2)
+library(corrplot)
+```
+
+\pagebreak
+
+# Descripción del dataset
+El *dataset* se denomina *Heart Attack Analisys & Prediction*, nos proporciona 14 variables que podrían estar relacionadas con los ataques al corazón, para ello se nos presentan los datos de 303 personas. Este *dataset* nos parece importante porque puede intenta utilizarse para prevenir o predecir una enfermedad, todo lo relacionado con la salud de las personas es importante. El problema que se pretende resolver es la prevención de los ataques al corazón. 
+\
+
+El *dataset* está disponible en Kaggle https://www.kaggle.com/datasets/rashikrahmanpritom/heart-attack-analysis-prediction-dataset
+\
+
+En esta práctica se intentará obtener un modelo a partir de los datos disponibles que nos permita predecir la probabilidad de que una persona sufra un ataque al corazón en base a los valores de ciertas variables disponibles. Se intentará que el modelo sea lo más sencillo posible, utilizando en el modelo aquellas variables que realmente sean significativas para el modelo y descartando aquellas que no aporten información al mismo. 
+\
+
+Las variables que tenemos en el *dataset* son:
+\
+
+- **age**: Edad de la persona, variable cuantitativa discreta.
+- **sex**: Sexo de la persona, variable cualitativa nominal. Toma valor 0 para mujer y 1 para hombre.
+- **cp**: (Chest Pain), define el tipo de dolor en el pecho que presenta la persona, variable cualitativa o categórica ordinal con 4 categorías. Toma valor 0 para dolor típico, 1 para dolor atípico, 2 sin dolor y 3 asintomático.
+- **trtbps**: Presión arterial en reposo (en mm Hg), variable cuantitativa discreta.
+- **chol**: Colesterol en mg/dl, variable cuantitativa discreta.
+- **fbs**: Azúcar en sangre mayor a 120 mg/dl, variable cualitativa dicotómica. Toma valor 1 para *True* y 0 para *False*.
+- **restegc**: Tipo de electrocardiograma en descanso. Variable cualitativa o categórica ordinal con tres categorías. Toma valor 0 para normal, 1 para onda con anormalidad y para 2 aparición de hipertrofia en el ventrículo izquierdo.
+- **thalach**: Valor máximo de pulsaciones cardíacas detectadas, variable cuantitativa discreta.
+- **exng**: Angina inducida por el ejercicio, variable cualitativa dicotómica. Toma valor 1 para *si* y 0 para *no*.
+- **oldpeak**: Valor de ST depresión, inducida por el ejercicio relativo al reposo, variable cuantitativa continua.
+- **slp**: (slope) Pendiente del segmento ST, variable continua discreta.
+- **caa**: Número de venas que se pueden ver en una fluoroscopia, variable continua discreta.
+- **thall**: Nivel de talasemia, variable continua discreta.
+- **output**: Si el paciente ha sufrido un ataque al corazón o no. 
+
+\pagebreak
+
+```{r punto1}
+datos <- read.table("heart.csv", header= TRUE, sep = ",", dec = ".")
+datos %>% str()
+clases <- sapply(datos, class)
+kable(data.frame(variables=names(clases), clase=as.vector(clases)))
+# Número de hombres y mujeres
+h <- length(which(datos$sex==1)) ; m <- length(which(datos$sex==0))
+```
+
+\
+
+El *dataset* tiene un tamaño de `r dim(datos)[1]` filas y `r dim(datos)[2]` columnas, el número de mujeres es de `r m` y el de hombres `r h`, y la distribución por sexos y edad es:
+```{r punto1b, fig.width=5, fig.height=4}
+barplot(c(h,m), col = c("orange", "blue"), legend.text = c("Hombres", "Mujeres"), space = c(0.5,0.5))
+hist(datos$age,freq=FALSE, col="lightcyan", main="Edad",xlab="",ylab="")
+lines(density(datos$age),col="red",lwd=2)
+```
+
+\pagebreak
+
+# Integración y selección
+En este apartado vamos a analizar la relaciones entre las distintas variables del *dataset* con *output*, que es la variable de interés. **Suponemos de forma inicial distribuciones normales**.
+\
+
+```{r punto 2a}
+datos_cor <- cor(datos)
+corrplot(datos_cor, method = "circle")
+```
+
+\
+En este caso con el *dataset* completo comprobamos que las variables que tienen una relación más fuerte con *output* son positivamente **cp, thalach y slp** y negativamente **exng, oldpeak, caa, thall y sex**. Las variables restantes incluidas **age** parecen no tener una relación importante con **output**.
+
+Vamos a realizar las correlaciones en base a la variable *sex* y ver si los resultados obtenidos son similares.
+
+\pagebreak
+
+```{r punto 2b}
+# Separamos mujeres
+datos_f <- datos[which(datos$sex==0),]
+datos_f[, "sex"] <- list(NULL)
+datos_cor_f <- cor(datos_f)
+corrplot(datos_cor_f, method = "circle")
+```
+
+Con los datos sólo de mujeres las variables con mayor relación positiva son **cp y slp** y **thalach** bastante menos, y relación negativa **exng, oldpeak, caa y thall**, pero también aparece **trtbps** con una fuerte relación negativa.
+
+
+\pagebreak
+
+```{r punto 2c}
+# Separamos hombres
+datos_m <- datos[which(datos$sex==1),]
+datos_m[, "sex"] <- list(NULL)
+datos_cor_m <- cor(datos_m)
+corrplot(datos_cor_m, method = "circle")
+```
+
+Con los datos sólo de los hombres las variables con mayor relación positiva son **cp y thalach** y **slp** bastante menos, y relación negativa **exng, oldpeak, caa y thall**, pero también aparece **age** con una fuerte relación negativa.
+
+Como conclusiones:
+
+- Entre el grupo de mujeres y hombres hay alguna diferencia en cuanto a las variables con las que tienen mayor relación principalmente, en el grupo de las mujeres la variable **trtbps** presión arterial en reposo es importante y en el grupo de los hombres **age** influye.
+- Hay variables como **restecg, fbs y chol** que parece no tener relación con la variable **output** y podemos eliminarlas del *dataset*.
+
+\pagebreak
+
+```{r punto 2d}
+# Eliminamos variables
+datos[, c("chol","fbs","restecg")] <- list(NULL)
+head(datos)
+datos_m[, c("chol","fbs","restecg")] <- list(NULL)
+head(datos_m)
+datos_f[, c("chol","fbs","restecg")] <- list(NULL)
+head(datos_f)
+```
+
+\
+Ahora vamos a convertir las variables a los tipos más adecuados para el posterior tratamiento de los datos. Todas las variables cualitativas o categóricas las convertimos en variables tipo *factor*. Almacenamos los datos resultantes en un archivo llamado **heart_out.csv**
+
+\
+\
+
+```{r punto 2}
+# dataset completo
+datos$sex <- as.factor(datos$sex)
+datos$output <- as.factor(datos$output)
+datos$cp <- as.factor(datos$cp)
+datos$exng <- as.factor(datos$exng)
+# Sólo mujeres
+datos_m$output <- as.factor(datos_m$output)
+datos_m$cp <- as.factor(datos_m$cp)
+datos_m$exng <- as.factor(datos_m$exng)
+# Sólo hombres
+datos_f$output <- as.factor(datos_f$output)
+datos_f$cp <- as.factor(datos_f$cp)
+datos_f$exng <- as.factor(datos_f$exng)
+sapply(datos, summary) %>% pander()
+write.csv(datos, "heart_out.csv", row.names = FALSE)
+```
+
+\
+
+\
+
+# Limpieza de datos
+En este apartado vamos a analizar si existen valores nulos y vacíos, así como valores extremos. 
+
+## Elementos nulos y vacios
+```{r punto3a}
+any(is.na(datos))
+apply(is.na(datos),2,mean) %>% pander()
+```
+No existen elementos nulos o vacíos en el *dataset*.
+
+\pagebreak
+
+## Valores extremos
+
+```{r punto3b}
+boxplot(datos[,c(2,3,6,7,8,9,10)], col = rgb(1, 0, 0, alpha = 0.4))
+boxplot(datos[,c(1,4,5)], col = rgb(1, 0, 0, alpha = 0.4))
+```
+
+\
+En base a los gráficos anteriores, del primer grupo de variables, **oldpeak, caa y thall** presentan posibles valores extremos o atípicos. Vamos a sacar unos gráficos de dispersión a ver que información nos dan.
+
+```{r punto3c, fig.width=5.5, fig.height=2.7}
+plot(datos$oldpeak, col=("blue"), xlab = "Número de muestra", ylab = "oldpeak")
+plot(datos$caa, col=("orange"), xlab = "Número de muestra", ylab = "caa")
+plot(datos$thall, col=("red"), xlab = "Número de muestra", ylab = "thall")
+```
+
+No parece que haya en este primer grupo de variables datos extremos o atípicos. 
+En el segundo grupo de variables sólo **trtpbs** presenta posibles valores extremos o atípicos, veamos que nos dice el gráfico de dispersión.
+
+```{r punto3d, fig.width=6, fig.height=2.5}
+plot(datos$trtbps, col=("brown"), xlab = "Número de muestra", ylab = "trtbps")
+```
+
+En este caso tampoco se puede asegurar que existan valores claramente extremos o atípicos.
+En base al análisis realizados no hemos detectado valores extremos o atípicos.
+
+\pagebreak
+
+# Análisis de datos
+
+```{r punto4}
+```
+
+## Selección de grupo de datos
+
+``` {r punto41}
+# Hasta ahora contamos con los grupos de datos por sexo
+
+# Resumen estadístico del dataset de hombres
+summary(datos_m)
+
+# Resumen estadístico del dataset de mujeres
+summary(datos_f)
+
+```
+
+
+## Comprobación de la normalidad y homogeneidad de la varianza
+
+```{r puntos42, fig.width=10, fig.height=4.5}
+# Comprobación de la normalidad en el grupo de datos masculinos (age)
+shapiro.test(datos_m$age)
+
+# Comprobación de la normalidad en el grupo de datos femeninos (age)
+shapiro.test(datos_f$age)
+
+# Gráfico Q-Q plot para el grupo de datos masculinos (age)
+qqnorm(datos_m$age, col= "orange")
+qqline(datos_m$age, col="red")
+
+# Gráfico Q-Q plot para el grupo de datos femeninos (age)
+qqnorm(datos_f$age, col="blue")
+qqline(datos_f$age, col="red")
+
+# Cargar el paquete 'car'
+library(car)
+
+# Realizar la prueba de homogeneidad de varianza utilizando leveneTest
+leveneTest(trtbps ~ sex, data = datos)
+
+# Gráfico de dispersión para comparar la presión arterial en reposo entre los 
+#grupos masculino y femenino
+plot(trtbps ~ sex, data = datos, xlab = "Sexo", ylab = "Presión arterial en reposo"
+     , col="green")
+
+```
+Para el grupo de datos masculinos (datos_m$age), el resultado de la prueba de normalidad Shapiro-Wilk muestra un valor de W = 0.9861 y un valor de p = 0.04. Dado que el valor de p (0.04) es menor que el nivel de significancia comúnmente utilizado de 0.05, podemos rechazar la hipótesis nula de normalidad. Esto indica que la distribución de las edades en el grupo de datos masculinos no sigue una distribución normal.
+
+Por otro lado, para el grupo de datos femeninos (datos_f$age), el resultado de la prueba de normalidad Shapiro-Wilk muestra un valor de W = 0.97953 y un valor de p = 0.1386. En este caso, el valor de p (0.1386) es mayor que el nivel de significancia de 0.05, lo que indica que no tenemos suficiente evidencia para rechazar la hipótesis nula de normalidad. Esto sugiere que la distribución de las edades en el grupo de datos femeninos se ajusta a una distribución normal.
+
+Por otro lado, el valor de la estadística de prueba F es 1.3593 y el valor p correspondiente es 0.2446. El valor p es la probabilidad de obtener un resultado igual o más extremo que el observado, bajo la suposición nula de que las varianzas de los grupos son iguales.
+
+En este caso, como el valor p (0.2446) es mayor que el nivel de significancia comúnmente utilizado (por ejemplo, 0.05), no hay evidencia suficiente para rechazar la hipótesis nula. Por lo tanto, se puede concluir que no hay diferencias significativas en la homogeneidad de la varianza de la presión arterial en reposo entre los grupos de sexo masculino y femenino en el conjunto de datos analizado.
+
+## Pruebas estadísticas
+
+
+```{r puntos43}
+# Comparamos la edad promedio entre hombres y mujeres
+t.test(datos_m$age, datos_f$age)
+
+# ANOVA para comparar la presión arterial en reposo entre los diferentes tipos de dolor en el pecho
+modelo_anova <- aov(trtbps ~ cp, data = datos)
+summary(modelo_anova)
+
+# Correlación entre la edad y la tensión arterial en hombres
+cor.test(datos_m$age, datos_m$trtbps)
+
+# Prueba de chi-cuadrado para examinar la relación entre el valor máximo de pulsaciones cardíacas 
+#detectadas y el valor de ST depresión, inducida por el ejercicio relativo al reposo
+tabla_chi <- table(datos_f$thalach, datos_f$oldpeak)
+chisq.test(tabla_chi)
+
+# Comparamos la presión arterial en reposo entre hombres y mujeres
+wilcox.test(datos_m$trtbps, datos_f$trtbps)
+
+# Comparamos el valor máximo de pulsaciones cardíacas entre los diferentes tipos de dolor en el pecho
+kruskal.test(thalachh ~ cp, data = datos)
+
+# Realizamos un análisis de regresión logística para predecir si un paciente ha sufrido un ataque al 
+#corazón basado en varias variables
+modelo_logistico <- glm(output ~ age + cp + trtbps + thalachh + exng + oldpeak + slp + caa + 
+                          thall, data = datos, family = "binomial")
+summary(modelo_logistico)
+
+```
+
+Dado que el valor p (0.09464) es mayor que el nivel de significancia comúnmente utilizado (por ejemplo, 0.05), no hay evidencia suficiente para rechazar la hipótesis nula. Por lo tanto, no se puede concluir que haya una diferencia significativa en la edad promedio entre hombres y mujeres en el conjunto de datos analizado.
+
+El análisis ANOVA muestra que el factor cp tiene un efecto significativo en la presión arterial en reposo, ya que el valor p correspondiente es 0.0344, que es menor que el nivel de significancia comúnmente utilizado (por ejemplo, 0.05). Esto significa que hay evidencia suficiente para rechazar la hipótesis nula y concluir que hay una diferencia significativa en la presión arterial en reposo entre los diferentes tipos de dolor en el pecho.
+
+El coeficiente de correlación de Pearson entre la edad y la tensión arterial en hombres es 0.2541964. El valor p obtenido es 0.000219, que es menor que el nivel de significancia comúnmente utilizado (por ejemplo, 0.05). Esto significa que hay evidencia suficiente para rechazar la hipótesis nula de no correlación y concluir que existe una correlación significativa entre la edad y la tensión arterial en hombres.
+
+El intervalo de confianza del 95% para la correlación está entre 0.1220575 y 0.3774812, lo que indica que la correlación verdadera entre la edad y la tensión arterial en hombres está probablemente dentro de este rango.
+
+Se observa un valor de chi-cuadrado de 1496.4 y un p-value de 1.372e-06, que es menor que el nivel de significancia comúnmente utilizado (por ejemplo, 0.05). El mensaje de advertencia indica que la aproximación chi-cuadrado puede ser incorrecta debido a las características de los datos.
+
+Esto implica que hay evidencia suficiente para rechazar la hipótesis nula de independencia entre el valor máximo de pulsaciones cardíacas detectadas y el valor de ST depresión, inducida por el ejercicio relativo al reposo en mujeres. En otras palabras, existe una asociación significativa entre estas dos variables en el conjunto de datos analizados.
+
+Se observa un valor de W de 9285 y un p-value de 0.3579. Dado que el p-value es mayor que el nivel de significancia comúnmente utilizado (por ejemplo, 0.05), no hay suficiente evidencia para rechazar la hipótesis nula de que no hay diferencia en las medianas de la presión arterial en reposo entre hombres y mujeres. Esto implica que no se encontró una diferencia significativa en la presión arterial en reposo entre hombres y mujeres en el conjunto de datos analizados.
+
+Se observa un valor de Kruskal-Wallis chi-squared de 48.216 y un p-value extremadamente pequeño (1.916e-10). Dado que el p-value es mucho menor que el nivel de significancia comúnmente utilizado (por ejemplo, 0.05), hay suficiente evidencia para rechazar la hipótesis nula de que las medianas son iguales entre los diferentes tipos de dolor en el pecho. Esto implica que se encontró una diferencia significativa en el valor máximo de pulsaciones cardíacas entre los diferentes tipos de dolor en el pecho en el conjunto de datos analizados.
+
+\pagebreak
+
+# Representación de resultados
+
+
+```{r punto5, fig.width=10, fig.height=4.5}
+
+# Calculamos las medias por grupo
+mean_m <- mean(datos_m$age)
+mean_f <- mean(datos_f$age)
+
+# Creamos el gráfico de barras
+barplot(c(mean_m, mean_f), names.arg = c("Hombres", "Mujeres"), 
+        ylim = c(0, max(mean_m, mean_f) + 5),
+        xlab = "Sexo", ylab = "Edad promedio", col = c("blue", "pink"),
+        main = "Comparación de la edad promedio entre hombres y mujeres")
+
+# Creamos el boxplot
+boxplot(trtbps ~ cp, data = datos, 
+        xlab = "Tipo de dolor en el pecho", ylab = "Presión arterial en reposo",
+        main = "Comparación de la presión arterial en reposo por tipo de dolor en el pecho",
+        col = "red")
+
+# Creamos el gráfico de dispersión
+plot(datos_m$age, datos_m$trtbps, 
+     xlab = "Edad", ylab = "Tensión arterial en hombres",
+     main = "Correlación entre la edad y la tensión arterial en hombres",
+     col = "orange")
+
+# Creamos el gráfico de barras
+barplot(tabla_chi, xlab = "Valor máximo de pulsaciones cardíacas", 
+        ylab = "Frecuencia", main = "Relación entre pulsaciones cardíacas y ST depresión",
+        col = "blue")
+
+
+
+```
+
+\pagebreak
+
+# Resolución del problema
+
+Basándonos en el análisis de regresión logística que realizamos previamente, podemos utilizar el modelo logístico para predecir la probabilidad de que una persona sufra un ataque al corazón en función de los valores de las variables independientes. 
+
+```{r punto6}
+
+# Obtenemos las predicciones del modelo logístico
+predicciones <- predict(modelo_logistico, type = "response", newdata = datos)
+
+# Creamos una columna en el conjunto de datos original con las probabilidades predichas
+datos$probabilidad <- predicciones
+
+# Definimos un umbral para determinar si se predice un ataque al corazón o no
+umbral <- 0.5
+
+# Agregamos una columna al conjunto de datos que indique si se predice un ataque al corazón o no
+datos$prediccion <- ifelse(datos$probabilidad >= umbral, "Sí", "No")
+
+# Visualizar el resultado de la predicción
+table(datos$output, datos$prediccion)
+
+
+```
+Con este código, hemos agregado dos columnas nuevas al conjunto de datos: "probabilidad", que representa la probabilidad predicha de sufrir un ataque al corazón para cada individuo, y "prediccion", que indica si se predice un ataque al corazón o no en base al umbral establecido.
+
+La tabla resultante muestra la comparación entre los valores reales de la variable "output" y las predicciones realizadas por el modelo. Puedes evaluar la precisión de las predicciones y determinar la tasa de aciertos y errores del modelo.
+
+
+# Código
+
+El código se ha realizado en R y se encuentra disponible en el repositorio GitHub https://github.com/fgarciagonzalez2/TD_Practica2.git
+
+```{r punto7}
+      
+```
+
+
+# Vídeo
+
+Los vídeos han sido subidos al aula virtual por cada uno de los alumnos.
+
+\
+\
+ 
+```{r tabla, echo=FALSE}
+tr <- tibble( Contribuciones = c("Investigación previa",
+                                 "Redacción de las respuestas",
+                                 "Desarrollo del código",
+                                 "Participación en el vídeo"),
+              
+              Firma = c("AMV, FEGG", 
+                        "AMV, FEGG",
+                        "AMV, FEGG",
+                        "AMV, FEGG"))
+tr %>%
+kable(booktabs = TRUE, longtable=TRUE, 
+      caption="\\label{}Tabla de contribuciones")
+```
+
+
